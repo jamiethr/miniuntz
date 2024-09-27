@@ -31,6 +31,8 @@ SOFTWARE.
 #define LED     LED_BUILTIN // Pin for heartbeat LED (shows code is working)
 #define CHANNEL 1           // MIDI channel number
 
+#define MIDI_HEADER(msg) = (msg >> 4)
+
 #define MIDI_MSG_NOTE_ON  0x90
 #define MIDI_MSG_NOTE_OFF 0x80
 #define MIDI_MSG_CC       0xB0
@@ -59,13 +61,11 @@ uint8_t note[] = {
   48, 49, 50, 51
 };
 
-// First parameter is the event type (0x09 = note on, 0x08 = note off).
-// Second parameter is note-on/note-off, combined with the channel.
-// Channel can be anything between 0-15. Typically reported to the user as 1-16.
-// Third parameter is the note number (48 = middle C).
-// Fourth parameter is the velocity (64 = normal, 127 = fastest).
-
-/// Sends a "note on" message to the host
+/* Sends a "note on" message to the host
+*  @param channel       The channel to send the message on (0 <= `channel` <= 15)
+*  @param pitch         The pitch of the note to be triggered (0 <= `pitch` <= 15); `60` corresponds to C3 (middle C)
+*  @param velocity      The velocity of the note to be triggered (0 <= `velocity` <= 127)
+*/
 void noteOn(byte channel, byte pitch, byte velocity) {
   // midiEventPacket_t noteOn = {0x09, (byte)(0x90 | channel), pitch, velocity};
 
@@ -75,16 +75,21 @@ void noteOn(byte channel, byte pitch, byte velocity) {
   MidiUSB.sendMIDI(noteOn);
 }
 
+/* Sends a "note off" message to the host
+*  @param channel       The channel to send the message on (0 <= `channel` <= 15)
+*  @param pitch         The pitch of the note to be triggered (0 <= `pitch` <= 15); `60` corresponds to C3 (middle C)
+*  @param velocity      The velocity of the note to be triggered (0 <= `velocity` <= 127)
+*/
 void noteOff(byte channel, byte pitch, byte velocity) {
   midiEventPacket_t noteOff = {(MIDI_MSG_NOTE_OFF >> 4), (byte)(MIDI_MSG_NOTE_OFF | channel), pitch, velocity};
   MidiUSB.sendMIDI(noteOff);
 }
 
-// First parameter is the event type (0x0B = control change).
-// Second parameter is the event type, combined with the channel.
-// Third parameter is the control number number (0-119).
-// Fourth parameter is the control value (0-127).
-
+/* Sends a "note on" message to the host
+*  @param channel       The channel to send the message on (0 <= `channel` <= 15)
+*  @param control       The control code to be triggered (0 <= `control` <= 119)
+*  @param value         The value of the control to be triggered (0 <= `value` <= 127)
+*/
 void controlChange(byte channel, byte control, byte value) {
   //midiEventPacket_t event = {0x0B, (byte) (0xB0 | channel), control, value};
   midiEventPacket_t event = {(MIDI_MSG_CC >> 4), (byte) (MIDI_MSG_CC | channel), control, value};
