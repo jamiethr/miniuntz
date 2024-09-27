@@ -1,7 +1,7 @@
 /****************************************************************************
 MIT License
 
-Copyright (c) 2018 gdsports625@gmail.com
+Copyright (c) 2024 jamie.thorup@gmail.com
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -22,56 +22,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ****************************************************************************/
 
-/*
- * Mini Untztrument Demo, Arduino Style
- *
- * https://learn.adafruit.com/mini-untztrument-3d-printed-midi-controller
- *
- * miniuntz is based on the code at the above link but it does not depend on
- * Teensy USB code. It uses the Arduino MIDIUSB library by Gary Grewal which
- * simplifies the software installation.
- *
- * WARNING: Do not enable ANALOG_INPUT unless pots are hooked up to the analog
- * inputs. If nothing is connected, the analog inputs will pick up random noise
- * which will result in a never ending stream of MIDI CC messages.
- *
- * miniuntz has been tested on the SparkFun Pro Micro 5V which has the same
- * processor (32u4) as the Leonardo. The Adafruit Itsy Bitsy 5V also has a 32u4
- * processor so it should also work.
- *
- * Trellis  Pro Micro
- * =======  =========
- * 5V       RAW
- * GND      GND
- * SDA      2
- * SCL      3
- * INT      not connected
- *
- * miniuntz has been tested on the Adafruit Trinket M0 with bidirectional logic
- * level changer.  Analog inputs not tested. But the Trinket M0 should have 3
- * inputs for analog input, if desired.  This should also work with the Itsy
- * Bitsy M0, Feather M0, SparkFun SAMD21, and Arduino Zero. All use 3.3V logic
- * levels so a logic level converter is required.
- *
- * Trellis     LLCONV      Trinket M0
- * =======     ======      =======
- *                  LV     3.3
- * 5V          HV          USB
- * GND         GND-GND     GND
- * SCL         HV1-LV1     SCL
- * SDA         HV2-LV2     SDA
- * INT         HV3-LV3     not connected
- *
- * LLCONV = bidirectional logic level converter such as Adafruit BSS138 board.
- *  https://www.adafruit.com/product/757
- */
-
 #include <Wire.h>
 #include <Adafruit_Trellis.h>
 #include <MIDIUSB.h>
 
+#define TRELLIS_I2C_ADDR  0x70
+
 #define LED     LED_BUILTIN // Pin for heartbeat LED (shows code is working)
 #define CHANNEL 1           // MIDI channel number
+
+#define MIDI_MSG_NOTE_ON  0x90
+#define MIDI_MSG_NOTE_OFF 0x80
+#define MIDI_MSG_CC       0xB0
 
 Adafruit_Trellis trellis;
 
@@ -89,6 +51,7 @@ uint8_t       fxc;
 uint8_t       rate;
 #endif
 
+// 60, ..., 63 => C3 (middle C) to A2
 uint8_t note[] = {
   60, 61, 62, 63,
   56, 57, 58, 59,
@@ -102,13 +65,18 @@ uint8_t note[] = {
 // Third parameter is the note number (48 = middle C).
 // Fourth parameter is the velocity (64 = normal, 127 = fastest).
 
+/// Sends a "note on" message to the host
 void noteOn(byte channel, byte pitch, byte velocity) {
-  midiEventPacket_t noteOn = {0x09, (byte)(0x90 | channel), pitch, velocity};
+  // midiEventPacket_t noteOn = {0x09, (byte)(0x90 | channel), pitch, velocity};
+
+  // The midi packet's header uses the upper nibble of the MIDI message's status byte, so we must bit-shift down by 4
+  // FIXME: replace the bit-shift with a macro?
+  midiEventPacket_t noteOn = {(MIDI_MSG_NOTE_ON >> 4), (byte)(MIDI_MSG_NOTE_ON | channel), pitch, velocity};
   MidiUSB.sendMIDI(noteOn);
 }
 
 void noteOff(byte channel, byte pitch, byte velocity) {
-  midiEventPacket_t noteOff = {0x08, (byte)(0x80 | channel), pitch, velocity};
+  midiEventPacket_t noteOff = {(MIDI_MSG_NOTE_OFF >> 4), (byte)(MIDI_MSG_NOTE_OFF | channel), pitch, velocity};
   MidiUSB.sendMIDI(noteOff);
 }
 
@@ -118,13 +86,14 @@ void noteOff(byte channel, byte pitch, byte velocity) {
 // Fourth parameter is the control value (0-127).
 
 void controlChange(byte channel, byte control, byte value) {
-  midiEventPacket_t event = {0x0B, (byte) (0xB0 | channel), control, value};
+  //midiEventPacket_t event = {0x0B, (byte) (0xB0 | channel), control, value};
+  midiEventPacket_t event = {(MIDI_MSG_CC >> 4), (byte) (MIDI_MSG_CC | channel), control, value};
   MidiUSB.sendMIDI(event);
 }
 
 void setup() {
   pinMode(LED, OUTPUT);
-  trellis.begin(0x70); // Pass I2C address
+  trellis.begin(TRELLIS_I2C_ADDR);
 #ifdef __AVR__
   // Default Arduino I2C speed is 100 KHz, but the HT16K33 supports
   // 400 KHz.  We can force this for faster read & refresh, but may
@@ -149,9 +118,9 @@ void setup() {
 void loop() {
   unsigned long t = millis();
   if((t - prevReadTime) >= 20L) { // 20ms = min Trellis poll time
-    if(trellis.readSwitches()) {  // Button state change?
+    if(trellis.readSwitches()) {  // Check if the state of buttons on the Trellis have changed 
 
-      for(uint8_t i=0; i<16; i++) { // For each button...
+      for(uint8_t i=0; i<16; i++) { // Update the state of each button
         if(trellis.justPressed(i)) {
           noteOn(CHANNEL, note[i], 127);
 
@@ -161,7 +130,7 @@ void loop() {
           trellis.clrLED(i);
         }
       }
-      trellis.writeDisplay();
+      trellis.writeDisplay();   // Update the LEDs on the Trellis to match each button's state
     }
 #ifdef ANALOG_INPUT
     uint8_t newModulation = map(analogRead(0), 0, 1023, 0, 127);
